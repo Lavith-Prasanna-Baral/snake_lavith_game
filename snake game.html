@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Advanced Snake Game</title>
+  <style>
+    body { margin:0; background:#222; overflow:hidden; color:white; font-family:sans-serif; }
+    canvas { display:block; }
+    #controls, #scoreBox {
+      position: fixed;
+      background: rgba(0,0,0,0.6);
+      padding: 10px;
+      border-radius: 8px;
+      z-index: 10;
+    }
+    #controls { top: 10px; left: 10px; }
+    #scoreBox { top: 10px; right: 10px; font-size: 18px; }
+    #startScreen, #gameOverScreen {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      flex-direction: column;
+    }
+    button {
+      font-size: 24px;
+      padding: 15px 30px;
+      margin: 10px;
+      border: none;
+      background: #4CAF50;
+      color: white;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    label { margin-right: 5px; }
+    input[type="range"] { width: 120px; }
+  </style>
+</head>
+<body>
+<div id="startScreen">
+  <button id="startButton">Start Game</button>
+</div>
+<div id="gameOverScreen" style="display: none;">
+  <h1>Game Over</h1>
+  <button id="restartButton">Restart</button>
+</div>
+<div id="controls">
+  <label for="speedSlider">Speed:</label>
+  <input type="range" id="speedSlider" min="0.05" max="1" step="0.05" value="0.25">
+</div>
+<div id="scoreBox">
+  Score: <span id="score">0</span> | High Score: <span id="highScore">0</span>
+</div>
+<canvas id="c"></canvas>
+<audio id="eatSound" src="https://actions.google.com/sounds/v1/cartoon/pop.ogg"></audio>
+<audio id="gameOverSound" src="https://actions.google.com/sounds/v1/cartoon/concussive_drum_hit.ogg"></audio>
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+let width = window.innerWidth, height = window.innerHeight;
+canvas.width = width;
+canvas.height = height;
+
+const segLen = 18;
+const totalSegments = 30;
+let segments = [];
+let mouse = { x: width / 2, y: height / 2 };
+let headSpeed = 0.25;
+let score = 0;
+let highScore = localStorage.getItem("snakeHighScore") || 0;
+document.getElementById("highScore").innerText = highScore;
+let fruit = {};
+let gameOver = false, gameStarted = false, frameCount = 0;
+let bossLevel = false;
+
+const eatSound = document.getElementById("eatSound");
+const gameOverSound = document.getElementById("gameOverSound");
+
+function resetGame() {
+  segments = [];
+  for (let i = 0; i < totalSegments; i++) segments.push({ x: width / 2, y: height / 2 });
+  score = 0;
+  frameCount = 0;
+  gameOver = false;
+  bossLevel = false;
+  document.getElementById("score").innerText = score;
+  fruit = { x: Math.random() * width, y: Math.random() * height };
+}
+
+document.getElementById("speedSlider").oninput = e => headSpeed = parseFloat(e.target.value);
+window.onmousemove = e => (mouse.x = e.clientX, mouse.y = e.clientY);
+document.getElementById("startButton").onclick = () => {
+  gameStarted = true;
+  document.getElementById("startScreen").style.display = "none";
+  resetGame();
+  animate();
+};
+document.getElementById("restartButton").onclick = () => {
+  document.getElementById("gameOverScreen").style.display = "none";
+  resetGame();
+  animate();
+};
+
+function checkCollision(a, b, r) {
+  return Math.hypot(a.x - b.x, a.y - b.y) < r;
+}
+function drawFruit() {
+  ctx.beginPath();
+  ctx.arc(fruit.x, fruit.y, 8, 0, Math.PI * 2);
+  ctx.fillStyle = bossLevel ? "gold" : "red";
+  ctx.fill();
+}
+function animate() {
+  if (!gameStarted || gameOver) return;
+  frameCount++;
+  ctx.fillStyle = "rgba(34,34,34,0.3)";
+  ctx.fillRect(0, 0, width, height);
+  let dx = mouse.x - segments[0].x, dy = mouse.y - segments[0].y;
+  let angle = Math.atan2(dy, dx);
+  segments[0].x += Math.cos(angle) * segLen * headSpeed;
+  segments[0].y += Math.sin(angle) * segLen * headSpeed;
+
+  for (let i = 1; i < segments.length; i++) {
+    const prev = segments[i - 1], cur = segments[i];
+    dx = prev.x - cur.x;
+    dy = prev.y - cur.y;
+    angle = Math.atan2(dy, dx);
+    cur.x = prev.x - Math.cos(angle) * segLen;
+    cur.y = prev.y - Math.sin(angle) * segLen;
+    if (i > 4 && frameCount > 60 && checkCollision(segments[0], cur, 10)) {
+      gameOver = true;
+      gameOverSound.play();
+      document.getElementById("gameOverScreen").style.display = "flex";
+      return;
+    }
+  }
+
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const s = segments[i], next = segments[i - 1] || mouse;
+    angle = Math.atan2(next.y - s.y, next.x - s.x);
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(angle);
+    const scale = 1 - i / segments.length * 0.7;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, segLen * scale, segLen * 0.5 * scale, 0, 0, Math.PI * 2);
+    ctx.fillStyle = i === 0 ? (bossLevel ? "gold" : "#6f4") : `hsl(${bossLevel ? 60 : 120 - i * 2}, 60%, ${50 - i / segments.length * 20}%)`;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawFruit();
+  if (checkCollision(fruit, segments[0], 12)) {
+    score++;
+    document.getElementById("score").innerText = score;
+    eatSound.play();
+    fruit = { x: Math.random() * width, y: Math.random() * height };
+    segments.push({ x: segments[segments.length - 1].x, y: segments[segments.length - 1].y });
+    if (score > highScore) {
+      highScore = score;
+      localStorage.setItem("snakeHighScore", highScore);
+      document.getElementById("highScore").innerText = highScore;
+    }
+    if (score >= 15) bossLevel = true;
+  }
+  requestAnimationFrame(animate);
+}
+</script>
+</body>
+</html>
